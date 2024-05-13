@@ -1,15 +1,12 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"strconv"
-
-	"github.com/redis/go-redis/v9"
 )
 
-func redis_publishNotification(rdb *redis.Client, ctx context.Context, n Notification) {
+func redis_publishNotification(dbs DBs, n Notification) {
 	jsonStr, _ := json.Marshal(n)
-	channel := "USER_NOTIFICATIONS::" + strconv.FormatUint(n.userId, 10)
-	rdb.Publish(ctx, channel, jsonStr)
+	channel := "USER_NOTIFICATIONS::" + strconv.FormatInt(n.userId, 10)
+	dbs.rdb.Publish(dbs.ctx, channel, jsonStr)
 }

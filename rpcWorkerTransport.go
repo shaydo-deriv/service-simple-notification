@@ -167,7 +167,7 @@ func listenToRedisForRPC(rpcChannel chan RPCMessage) {
 		}
 	}
 }
-func handleRPCRequests(rpcChannel chan RPCMessage) {
+func handleRPCRequests(dbs DBs, rpcChannel chan RPCMessage) {
 	for {
 		message := <-rpcChannel
 		//fmt.Printf("Handling RPC message: %s\n", message)
@@ -175,16 +175,16 @@ func handleRPCRequests(rpcChannel chan RPCMessage) {
 			fmt.Printf("Deadline reached for %s (%ss old)\n", message.rpc, strconv.FormatInt(time.Now().Unix()-message.deadline, 10))
 			message.callback([]byte{}, false, nil) //Not an error, but don't send any response
 		} else {
-			rpcResponse, err := handleRPC(message.rpc, message.args, message.stash)
+			rpcResponse, err := handleRPC(dbs, message.rpc, message.args, message.stash)
 			message.callback(rpcResponse, true, err)
 		}
 	}
 }
-func rpcWorker(numHandlers int) {
+func rpcWorker(dbs DBs, numHandlers int) {
 	rpcChannel := make(chan RPCMessage, 100)
 	go listenToRedisForRPC(rpcChannel)
 
 	for ii := 0; ii < numHandlers; ii++ {
-		go handleRPCRequests(rpcChannel)
+		go handleRPCRequests(dbs, rpcChannel)
 	}
 }

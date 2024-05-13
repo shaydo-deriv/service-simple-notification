@@ -39,8 +39,14 @@ func matches(regExp string, val string) bool {
 	return match
 }
 
-func serveAPI() {
-	var ctx = context.Background()
+type DBs struct {
+	pgdb *pgxpool.Pool
+	rdb  *redis.Client
+	ctx  context.Context
+}
+
+func connectDBs() DBs {
+	ctx := context.Background()
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     "host.docker.internal:6379",
 		Password: "", // no password set
@@ -49,8 +55,12 @@ func serveAPI() {
 	pgdb, err := pgxpool.New(ctx, os.Getenv("DATABASE_URL"))
 	if err != nil {
 		fmt.Print("Failed to connect to postgresql")
-		return
+		return DBs{}
 	}
+	return DBs{pgdb, rdb, ctx}
+}
+
+func serveAPI(dbs DBs) {
 
 	router := gin.Default()
 	router.Use(CORSMiddleware())
@@ -62,7 +72,7 @@ func serveAPI() {
 			c.JSON(http.StatusBadRequest, map[string]any{"error": "Invalid request"})
 			return
 		}
-		newId, err := addNotification(pgdb, rdb, ctx, req)
+		newId, err := addNotification(dbs, req)
 		if err != nil {
 			errStr := fmt.Sprintf("failed to create notification: %s", err)
 			c.JSON(http.StatusInternalServerError, map[string]any{"error": errStr})
@@ -83,7 +93,7 @@ func serveAPI() {
 			return
 		}
 
-		notifications, err := getNotifications(pgdb, ctx, userIdInt)
+		notifications, err := getNotifications(dbs, userIdInt)
 		if err != nil {
 			errStr := fmt.Sprintf("failed to get notifications: %s", err)
 			c.JSON(http.StatusInternalServerError, map[string]any{"error": errStr})
@@ -98,6 +108,7 @@ func serveAPI() {
 }
 
 func main() {
-	go rpcWorker(5)
-	serveAPI()
+	dbs := connectDBs()
+	go rpcWorker(dbs, 5)
+	serveAPI(dbs)
 }
