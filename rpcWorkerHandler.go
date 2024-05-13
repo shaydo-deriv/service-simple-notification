@@ -24,8 +24,8 @@ func handleGetNotifications(dbs DBs, args map[string]any) (any, error) {
 	ret := make([]map[string]any, 0)
 	for _, n := range notifications {
 		ret = append(ret, map[string]any{
-			"id":      n.id,
-			"payload": n.payload,
+			"id":      n.Id,
+			"payload": n.Payload,
 		})
 	}
 	return ret, nil

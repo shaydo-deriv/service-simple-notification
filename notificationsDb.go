@@ -6,7 +6,7 @@ import (
 )
 
 func db_addNotification(dbs DBs, n Notification) (uint64, error) {
-	rows, err := dbs.pgdb.Query(dbs.ctx, "INSERT INTO notifications (user_id,payload,created_at) VALUES($1,$2,CURRENT_TIMESTAMP()) RETURNING id", n.userId, n.payload)
+	rows, err := dbs.pgdb.Query(dbs.ctx, "INSERT INTO notifications (user_id,payload,created_at) VALUES($1,$2,CURRENT_TIMESTAMP()) RETURNING id", n.UserId, n.Payload)
 	if err != nil {
 		return 0, errors.New(fmt.Sprintf("Error adding notifications to DB: %s", err))
 	}
@@ -33,9 +33,9 @@ func db_getNotifications(dbs DBs, userId uint64) ([]Notification, error) {
 			return ret, errors.New("Error getting notifications values from DB")
 		} else {
 			ret = append(ret, Notification{
-				id:      values[0].(int64),
-				userId:  values[1].(int64),
-				payload: values[2].(string),
+				Id:      values[0].(int64),
+				UserId:  values[1].(int64),
+				Payload: values[2].(string),
 			})
 		}
 	}

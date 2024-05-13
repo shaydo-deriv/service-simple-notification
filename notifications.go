@@ -1,9 +1,9 @@
 package main
 
 type Notification struct {
-	id      int64
-	userId  int64
-	payload string
+	Id      int64
+	UserId  int64
+	Payload string
 }
 
 func addNotification(dbs DBs, n Notification) (uint64, error) {
