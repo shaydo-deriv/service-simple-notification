@@ -98,6 +98,6 @@ func serveAPI() {
 }
 
 func main() {
-	rpcWorker()
+	go rpcWorker(5)
 	serveAPI()
 }
