@@ -17,6 +17,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/regentmarkets/sns/internal/notification"
 	"github.com/regentmarkets/sns/internal/nstore"
+	"github.com/regentmarkets/sns/internal/rpchandler"
 	"github.com/regentmarkets/sns/internal/rpub"
 	"github.com/regentmarkets/sns/pkg/derivrpc"
 )
@@ -118,7 +119,7 @@ func main() {
 	ns := nstore.New(pgdb)
 	pub := rpub.New(rdb)
 	nsrv = notification.New(ns, pub)
-	rpc := derivrpc.New(rdb, 5, nsrv)
+	rpc := derivrpc.New(rdb, 5, rpchandler.New(nsrv).HandlerFunc())
 	go func() {
 		rpc.Run(ctx)
 		cancel()

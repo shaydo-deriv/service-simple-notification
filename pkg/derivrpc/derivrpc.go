@@ -3,7 +3,6 @@ package derivrpc
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -12,20 +11,21 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
-	"github.com/regentmarkets/sns/internal/notification"
 )
+
+type Handler func(ctx context.Context, rpc string, args map[string]any, stash []string) (any, error)
 
 type Service struct {
 	rdb         *redis.Client
 	maxHandlers int64
-	nsrv        *notification.Service
+	handler     Handler
 }
 
-func New(rdb *redis.Client, maxHandlers int64, nsrv *notification.Service) *Service {
+func New(rdb *redis.Client, maxHandlers int64, handler Handler) *Service {
 	return &Service{
 		rdb:         rdb,
 		maxHandlers: maxHandlers,
-		nsrv:        nsrv,
+		handler:     handler,
 	}
 }
 
@@ -178,33 +178,7 @@ func (s *Service) handleRPCRequests(ctx context.Context, message *RPCMessage) {
 		fmt.Printf("Deadline reached for %s (%ss old)\n", message.rpc, strconv.FormatInt(time.Now().Unix()-message.deadline, 10))
 		message.callback([]byte{}, false, nil) //Not an error, but don't send any response
 	} else {
-		rpcResponse, err := s.handleRPC(ctx, message.rpc, message.args, message.stash)
+		rpcResponse, err := s.handler(ctx, message.rpc, message.args, message.stash)
 		message.callback(rpcResponse, true, err)
 	}
-}
-
-func (s *Service) handleRPC(ctx context.Context, rpc string, args map[string]any, stash []string) (any, error) {
-	if rpc == "get_notifications" {
-		userId, err := getUserIdForRPC(args)
-		if err != nil {
-			return "", errors.New(fmt.Sprintf("failed to get userId for notifications: %s", err))
-		}
-		notifications, err := s.nsrv.Get(ctx, userId)
-		if err != nil {
-			return "", errors.New(fmt.Sprintf("failed to get notifications: %s", err))
-		}
-		ret := make([]map[string]any, 0)
-		for _, n := range notifications {
-			ret = append(ret, map[string]any{
-				"id":      n.Id,
-				"payload": n.Payload,
-			})
-		}
-		return ret, nil
-	}
-	return "", errors.New(fmt.Sprintf("Unknown rpc: %s", rpc))
-}
-
-func getUserIdForRPC(args map[string]any) (uint64, error) {
-	return 123, nil //TODO - we need to get the websocket layer to include the userId in the
 }
