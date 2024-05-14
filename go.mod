@@ -1,4 +1,4 @@
-module mymain
+module github.com/regentmarkets/sns
 
 go 1.19
 

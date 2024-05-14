@@ -1,12 +1,26 @@
-package main
+package nstore
 
 import (
+	"context"
 	"errors"
 	"fmt"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/regentmarkets/sns/internal/notification"
 )
 
-func db_addNotification(dbs DBs, n Notification) (uint64, error) {
-	rows, err := dbs.pgdb.Query(dbs.ctx, "INSERT INTO notifications (user_id,payload,created_at) VALUES($1,$2,CURRENT_TIMESTAMP()) RETURNING id", n.UserId, n.Payload)
+type NStore struct {
+	pg *pgxpool.Pool
+}
+
+func New(pg *pgxpool.Pool) *NStore {
+	return &NStore{
+		pg: pg,
+	}
+}
+
+func (ns *NStore) Add(ctx context.Context, n notification.Notification) (uint64, error) {
+	rows, err := ns.pg.Query(ctx, "INSERT INTO notifications (user_id,payload,created_at) VALUES($1,$2,CURRENT_TIMESTAMP()) RETURNING id", n.UserId, n.Payload)
 	if err != nil {
 		return 0, errors.New(fmt.Sprintf("Error adding notifications to DB: %s", err))
 	}
@@ -21,9 +35,9 @@ func db_addNotification(dbs DBs, n Notification) (uint64, error) {
 	}
 	return 0, errors.New("Error inserting notification into DB")
 }
-func db_getNotifications(dbs DBs, userId uint64) ([]Notification, error) {
-	rows, err := dbs.pgdb.Query(dbs.ctx, "SELECT id,user_id,payload FROM notifications WHERE user_id=$1", userId)
-	ret := []Notification{}
+func (ns *NStore) Get(ctx context.Context, userId uint64) ([]notification.Notification, error) {
+	rows, err := ns.pg.Query(ctx, "SELECT id,user_id,payload FROM notifications WHERE user_id=$1", userId)
+	ret := []notification.Notification{}
 	if err != nil {
 		return ret, errors.New(fmt.Sprintf("Error getting notifications from DB: %s", err))
 	}
@@ -32,7 +46,7 @@ func db_getNotifications(dbs DBs, userId uint64) ([]Notification, error) {
 		if err != nil {
 			return ret, errors.New("Error getting notifications values from DB")
 		} else {
-			ret = append(ret, Notification{
+			ret = append(ret, notification.Notification{
 				Id:      values[0].(int64),
 				UserId:  values[1].(int64),
 				Payload: values[2].(string),

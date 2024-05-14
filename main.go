@@ -4,14 +4,21 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
 	"regexp"
 	"strconv"
+	"syscall"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
+	"github.com/regentmarkets/sns/internal/notification"
+	"github.com/regentmarkets/sns/internal/nstore"
+	"github.com/regentmarkets/sns/internal/rpub"
+	"github.com/regentmarkets/sns/pkg/derivrpc"
 )
 
 func CORSMiddleware() gin.HandlerFunc {
@@ -45,34 +52,19 @@ type DBs struct {
 	ctx  context.Context
 }
 
-func connectDBs() DBs {
-	ctx := context.Background()
-	rdb := redis.NewClient(&redis.Options{
-		Addr:     "host.docker.internal:6379",
-		Password: "", // no password set
-		DB:       0,  // use default DB
-	})
-	pgdb, err := pgxpool.New(ctx, os.Getenv("DATABASE_URL"))
-	if err != nil {
-		fmt.Print("Failed to connect to postgresql")
-		return DBs{}
-	}
-	return DBs{pgdb, rdb, ctx}
-}
-
-func serveAPI(dbs DBs) {
+func serveAPI(ctx context.Context) {
 
 	router := gin.Default()
 	router.Use(CORSMiddleware())
 	router.GET("/test", func(c *gin.Context) { c.JSON(http.StatusOK, "Test") })
 	router.POST("/addNotification", func(c *gin.Context) {
-		var req Notification
+		var req notification.Notification
 		err := json.NewDecoder(c.Request.Body).Decode(&req)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, map[string]any{"error": "Invalid request"})
 			return
 		}
-		newId, err := addNotification(dbs, req)
+		newId, err := nsrv.Add(c.Request.Context(), req)
 		if err != nil {
 			errStr := fmt.Sprintf("failed to create notification: %s", err)
 			c.JSON(http.StatusInternalServerError, map[string]any{"error": errStr})
@@ -93,7 +85,7 @@ func serveAPI(dbs DBs) {
 			return
 		}
 
-		notifications, err := getNotifications(dbs, userIdInt)
+		notifications, err := nsrv.Get(c.Request.Context(), userIdInt)
 		if err != nil {
 			errStr := fmt.Sprintf("failed to get notifications: %s", err)
 			c.JSON(http.StatusInternalServerError, map[string]any{"error": errStr})
@@ -104,11 +96,33 @@ func serveAPI(dbs DBs) {
 	})
 
 	router.Run("localhost:8064")
-
 }
 
+var nsrv *notification.Service
+
 func main() {
-	dbs := connectDBs()
-	go rpcWorker(dbs, 5)
-	serveAPI(dbs)
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
+	defer cancel()
+
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     "host.docker.internal:6379",
+		Password: "", // no password set
+		DB:       0,  // use default DB
+	})
+	pgdb, err := pgxpool.New(ctx, os.Getenv("DATABASE_URL"))
+	if err != nil {
+		slog.Error("Connection to PG has failed", slog.Any("error", err))
+		os.Exit(1)
+	}
+
+	ns := nstore.New(pgdb)
+	pub := rpub.New(rdb)
+	nsrv = notification.New(ns, pub)
+	rpc := derivrpc.New(rdb, 5, nsrv)
+	go func() {
+		rpc.Run(ctx)
+		cancel()
+	}()
+
+	serveAPI(ctx)
 }
